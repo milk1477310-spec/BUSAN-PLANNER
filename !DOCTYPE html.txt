@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>釜山家族之旅 2026</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SortableJS (拖曳排序) -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            busan: {
+              sky: '#e0f2fe',
+              ocean: '#0284c7',
+              deep: '#0369a1',
+              sand: '#fef3c7',
+              bg: '#f4f9fc',
+              card: '#ffffff'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #f4f9fc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* 隱藏滾動條但保持可滾動 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* 拖曳動畫 */
+    .sortable-ghost {
+      opacity: 0.4;
+      background-color: #e0f2fe !important;
+    }
+  </style>
+</head>
+<body class="text-slate-700 antialiased max-w-md mx-auto min-h-screen shadow-2xl relative pb-20">
+
+<div id="app">
+  <!-- 頁首 Banner 區塊 -->
+  <div class="relative w-full h-[250px] overflow-hidden bg-busan-sky">
+    <!-- 背景圖片 -->
+    <img src="釜山家族.jpg" alt="釜山家族" class="w-full h-[250px] object-cover object-left">
+    
+    <!-- 頁首靜態/浮動 Tab 按鈕區塊 (位於右上角/右下方) -->
+    <div class="absolute bottom-6 right-3 flex space-x-1.5 bg-white/80 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/50">
+      <button 
+        v-for="tab in tabs" 
+        :key="tab.id" 
+        @click="currentTab = tab.id"
+        :class="currentTab === tab.id ? 'bg-busan-ocean text-white' : 'text-slate-600 hover:bg-slate-100'"
+        class="flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200">
+        <i :data-lucide="tab.icon" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- 圓弧銜接主內容區域 (負邊距向上重疊) -->
+  <main class="relative -mt-6 bg-busan-bg rounded-t-3xl pt-5 px-4 min-h-[calc(100vh-220px)] shadow-inner">
+
+    <!-- TAB 1: 每日行程表 -->
+    <div v-show="currentTab === 'schedule'" class="space-y-4">
+      
+      <!-- 橫向日期選單 -->
+      <div class="flex space-x-3 overflow-x-auto no-scrollbar py-1">
+        <button 
+          v-for="(day, index) in days" 
+          :key="index"
+          @click="selectedDayIndex = index"
+          :class="selectedDayIndex === index ? 'bg-busan-ocean text-white shadow-md scale-105' : 'bg-white text-slate-600 border border-slate-100'"
+          class="flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-2xl transition-all duration-200">
+          <span class="text-xs uppercase font-bold tracking-wider opacity-80">{{ day.week }}</span>
+          <span class="text-2xl font-black mt-0.5">{{ day.date }}</span>
+        </button>
+      </div>
+
+      <!-- 分類篩選下拉選單 -->
+      <div class="flex justify-between items-center bg-white p-2.5 rounded-xl shadow-sm border border-slate-100">
+        <span class="text-xs font-bold text-slate-400 pl-2">行程篩選</span>
+        <select v-model="filterCategory" class="text-sm bg-slate-50 border-none rounded-lg px-3 py-1 text-slate-700 font-medium focus:outline-none">
+          <option value="全部">全部類別</option>
+          <option value="景點">景點</option>
+          <option value="美食">美食</option>
+          <option value="住宿">住宿</option>
+          <option value="航班">航班</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+
+      <!-- 當日天氣資訊卡片 -->
+      <div class="bg-gradient-to-r from-sky-400 to-busan-ocean rounded-2xl p-4 text-white shadow-sm flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <i :data-lucide="currentWeather.icon" class="w-10 h-10 text-amber-300"></i>
+          <div>
+            <div class="text-xs font-medium opacity-90">釜山海雲台 · {{ currentDay.title }}</div>
+            <div class="text-2xl font-black tracking-tight">{{ currentWeather.temp }}°C</div>
+          </div>
+        </div>
+        <div class="text-right text-xs opacity-90 space-y-0.5">
+          <div>{{ currentWeather.condition }}</div>
+          <div>體感温度 {{ currentWeather.feelsLike }}°C</div>
+        </div>
+      </div>
+
+      <!-- 行程卡片清單 (支援 SortableJS 拖曳排序) -->
+      <div id="schedule-list" class="space-y-3 pt-1">
+        <div v-for="(item, idx) in filteredSchedules" :key="item.id" :data-id="item.id" class="relative group">
+          
+          <!-- 上下行程交通時間提示區塊 -->
+          <div v-if="idx > 0" class="flex items-center justify-center my-2 space-x-2 text-xs text-slate-400">
+            <div class="h-4 w-[1px] bg-slate-200"></div>
+            <span class="bg-slate-100 px-2.5 py-0.5 rounded-full flex items-center gap-1 border border-slate-200/50">
+              <i :data-lucide="item.transportIcon || 'footprints'" class="w-3.5 h-3.5 text-busan-ocean"></i>
+              預計 {{ item.travelTime || '15分鐘' }}
+            </span>
+            <div class="h-4 w-[1px] bg-slate-200"></div>
+          </div>
+
+          <!-- 第一天第一項：航班專用樣式卡片 -->
+          <div v-if="item.category === '航班'" class="bg-gradient-to-br from-indigo-900 to-slate-800 text-white p-4 rounded-2xl shadow-md border border-indigo-700/30">
+            <div class="flex justify-between items-center mb-2">
+              <span class="bg-indigo-500/30 text-indigo-200 text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wider">FLIGHT {{ item.flightNo }}</span>
+              <button @click="openEditModal(item)" class="text-slate-400 hover:text-white"><i data-lucide="more-horizontal" class="w-4 h-4"></i></button>
+            </div>
+            <div class="flex justify-between items-center my-2">
+              <div class="text-center">
+                <div class="text-xl font-black">{{ item.depCode }}</div>
+                <div class="text-xs text-slate-300">{{ item.depTime }}</div>
+              </div>
+              <div class="flex-1 px-4 flex flex-col items-center">
+                <i data-lucide="plane" class="w-5 h-5 text-indigo-300 transform rotate-45 mb-1"></i>
+                <div class="w-full border-b border-dashed border-slate-500"></div>
+              </div>
+              <div class="text-center">
+                <div class="text-xl font-black">{{ item.arrCode }}</div>
+                <div class="text-xs text-slate-300">{{ item.arrTime }}</div>
+              </div>
+            </div>
+            <div class="text-xs text-slate-300 border-t border-slate-700/50 pt-2 mt-2 flex justify-between">
+              <span>{{ item.title }}</span>
+              <a :href="item.naverUrl" target="_blank" class="text-indigo-300 hover:underline flex items-center gap-0.5">NAVER 導航 <i data-lucide="external-link" class="w-3 h-3"></i></a>
+            </div>
+          </div>
+
+          <!-- 一般行程卡片 (景點/美食/住宿/其他) -->
+          <div v-else class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 transition-all">
+            <div class="flex justify-between items-start">
+              <div class="flex items-center space-x-2">
+                <span :class="getCategoryBadge(item.category)" class="text-[10px] px-2 py-0.5 rounded-md font-bold">
+                  {{ item.category }}
+                </span>
+                <h3 class="font-bold text-slate-800 text-base">{{ item.title }}</h3>
+              </div>
+              <div class="flex items-center space-x-1">
+                <button @click="openEditModal(item)" class="text-slate-300 hover:text-slate-600 p-1"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300 cursor-grab handle"></i>
+              </div>
+            </div>
+
+            <!-- 資訊欄位 -->
+            <div class="mt-2 space-y-1 text-xs text-slate-500">
+              <div v-if="item.time" class="flex items-center gap-1.5">
+                <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>
+                <span>營業/時間：{{ item.time }}</span>
+              </div>
+              <div v-if="item.ticket" class="flex items-center gap-1.5">
+                <i data-lucide="ticket" class="w-3.5 h-3.5 text-slate-400"></i>
+                <span>門票：{{ item.ticket }}</span>
+              </div>
+              <div v-if="item.note" class="flex items-start gap-1.5 text-slate-600 bg-slate-50 p-2 rounded-lg mt-1">
+                <i data-lucide="file-text" class="w-3.5 h-3.5 text-slate-400 mt-0.5"></i>
+                <span>{{ item.note }}</span>
+              </div>
+            </div>
+
+            <!-- NAVER Maps 導航按鈕 -->
+            <div class="mt-3 pt-2 border-t border-slate-50 flex justify-end">
+              <a :href="item.naverUrl" target="_blank" class="inline-flex items-center gap-1 text-xs font-bold text-busan-ocean bg-sky-50 px-3 py-1.5 rounded-xl hover:bg-sky-100 transition">
+                <i data-lucide="navigation" class="w-3.5 h-3.5"></i> NAVER 地圖導航
+              </a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: 實用資訊 -->
+    <div v-show="currentTab === 'info'" class="space-y-4">
+      
+      <!-- 匯率換算器 -->
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="calculator" class="w-5 h-5 text-busan-ocean"></i> 韓元 / 台幣 匯率試算
+        </h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-[10px] font-bold text-slate-400 block mb-1">韓元 (KRW)</label>
+            <input type="number" v-model="krwInput" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:border-busan-ocean">
+          </div>
+          <div>
+            <label class="text-[10px] font-bold text-slate-400 block mb-1">折合台幣 (TWD)</label>
+            <div class="w-full bg-sky-50 border border-sky-100 rounded-xl px-3 py-2 text-sm font-black text-busan-ocean">
+              NT$ {{ Math.round(krwInput * 0.024) }}
+            </div>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-400 text-right">以參考匯率 1 TWD ≈ 41.6 KRW 計算</p>
+      </div>
+
+      <!-- 航班資訊卡片 -->
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="plane-takeoff" class="w-5 h-5 text-busan-ocean"></i> 航班資訊 (真航空 Jin Air)
+        </h3>
+        <!-- 去程 -->
+        <div class="bg-slate-50 p-3 rounded-xl space-y-1">
+          <div class="flex justify-between text-xs font-bold text-slate-700">
+            <span>去程 · 11/28 (五)</span>
+            <span class="text-busan-ocean">LJ578</span>
+          </div>
+          <div class="text-xs text-slate-600">桃園 T1 (02:40) ➔ 釜山金海 (06:10)</div>
+          <div class="text-[10px] text-slate-400">飛行時間：2 hr 30 min</div>
+        </div>
+        <!-- 回程 -->
+        <div class="bg-slate-50 p-3 rounded-xl space-y-1">
+          <div class="flex justify-between text-xs font-bold text-slate-700">
+            <span>回程 · 11/30 (日)</span>
+            <span class="text-busan-ocean">LJ577</span>
+          </div>
+          <div class="text-xs text-slate-600">釜山金海 (21:50) ➔ 桃園 T1 (23:40)</div>
+          <div class="text-[10px] text-slate-400">飛行時間：2 hr 50 min</div>
+        </div>
+      </div>
+
+      <!-- 住宿資訊卡片 -->
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-2">
+        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="hotel" class="w-5 h-5 text-busan-ocean"></i> 飯店資訊
+        </h3>
+        <div class="text-sm font-bold text-slate-700">瑪麗索爾住宿 (마리쏠 스테이 해운대)</div>
+        <p class="text-xs text-slate-500">地址：부산 해운대구 달맞이길62번길 38 삼환미포씨랜드 4층, 48098</p>
+        <div class="pt-2 flex justify-end">
+          <a href="https://map.naver.com/v5/search/%EB%A7%88%EB%A6%AC%EC%8F%A2%20%EC%8A%A4%ED%85%8C%EC%9D%B4" target="_blank" class="text-xs font-bold text-busan-ocean bg-sky-50 px-3 py-1.5 rounded-xl hover:bg-sky-100 flex items-center gap-1">
+            <i data-lucide="navigation" class="w-3.5 h-3.5"></i> 開啟 NAVER 地圖
+          </a>
+        </div>
+      </div>
+
+      <!-- 緊急聯絡電話 -->
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-2">
+        <h3 class="font-bold text-slate-800 flex items-center gap-2">
+          <i data-lucide="phone-call" class="w-5 h-5 text-red-500"></i> 緊急醫療與求助
+        </h3>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <a href="tel:112" class="p-2.5 bg-red-50 text-red-600 rounded-xl font-bold flex items-center justify-center gap-1">
+            <i data-lucide="shield-alert" class="w-4 h-4"></i> 報警 112
+          </a>
+          <a href="tel:119" class="p-2.5 bg-red-50 text-red-600 rounded-xl font-bold flex items-center justify-center gap-1">
+            <i data-lucide="ambulance" class="w-4 h-4"></i> 救護車 119
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 3: 購物清單 -->
+    <div v-show="currentTab === 'shopping'" class="space-y-4">
+      <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+        <div class="flex gap-2 mb-3">
+          <input type="text" v-model="newShopItem" placeholder="新增想買的商品..." class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-busan-ocean">
+          <button @click="addShoppingItem" class="bg-busan-ocean text-white px-4 py-2 rounded-xl text-sm font-bold">新增</button>
+        </div>
+        <div class="space-y-2">
+          <div v-for="(shop, i) in shoppingList" :key="i" class="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl">
+            <div class="flex items-center space-x-2">
+              <input type="checkbox" v-model="shop.done" class="w-4 h-4 accent-busan-ocean rounded">
+              <span :class="{'line-through text-slate-400': shop.done}" class="text-sm font-medium text-slate-700">{{ shop.name }}</span>
+            </div>
+            <button @click="shoppingList.splice(i, 1)" class="text-slate-300 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: 花費紀錄 -->
+    <div v-show="currentTab === 'expenses'" class="space-y-4">
+      <!-- 總花費統計 -->
+      <div class="bg-gradient-to-br from-busan-ocean to-busan-deep text-white p-5 rounded-2xl shadow-md space-y-1">
+        <div class="text-xs opacity-80">旅遊累積總花費 (KRW)</div>
+        <div class="text-3xl font-black">₩ {{ totalExpenses.toLocaleString() }}</div>
+        <div class="text-xs opacity-90 pt-1">約合台幣 NT$ {{ Math.round(totalExpenses * 0.024).toLocaleString() }}</div>
+      </div>
+
+      <!-- 花費列表 -->
+      <div class="space-y-2">
+        <div v-for="(exp, idx) in expenses" :key="idx" class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-md">{{ exp.category }}</span>
+              <span class="font-bold text-slate-800 text-sm">{{ exp.title }}</span>
+            </div>
+            <div class="text-[10px] text-slate-400 mt-1">{{ exp.date }} · {{ exp.payment }}</div>
+          </div>
+          <div class="text-right">
+            <div class="font-black text-slate-800 text-sm">₩ {{ Number(exp.amount).toLocaleString() }}</div>
+            <button @click="expenses.splice(idx, 1)" class="text-[10px] text-slate-300 hover:text-red-500">刪除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 浮動新增按鈕 (僅在行程與花費頁面顯示) -->
+  <button 
+    v-if="currentTab === 'schedule' || currentTab === 'expenses'"
+    @click="openAddModal"
+    class="fixed bottom-6 right-6 w-14 h-14 bg-busan-ocean text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-200 z-40">
+    <i data-lucide="plus" class="w-7 h-7"></i>
+  </button>
+
+  <!-- 新增/編輯 Modal 彈出視窗 -->
+  <div v-if="showModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-lg text-slate-800">{{ isEditing ? '編輯項目' : '新增項目' }}</h3>
+        <button @click="showModal = false" class="text-slate-400"><i data-lucide="x" class="w-6 h-6"></i></button>
+      </div>
+
+      <!-- 新增/編輯行程表單 -->
+      <div v-if="currentTab === 'schedule'" class="space-y-3">
+        <div>
+          <label class="text-xs font-bold text-slate-500">類別</label>
+          <select v-model="formSchedule.category" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+            <option>景點</option>
+            <option>美食</option>
+            <option>住宿</option>
+            <option>航班</option>
+            <option>其他</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500">名稱</label>
+          <input type="text" v-model="formSchedule.title" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500">營業時間 / 時間</label>
+          <input type="text" v-model="formSchedule.time" placeholder="例如：09:00 - 18:00" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+        </div>
+        <div v-if="formSchedule.category === '景點'">
+          <label class="text-xs font-bold text-slate-500">門票資訊</label>
+          <input type="text" v-model="formSchedule.ticket" placeholder="例如：₩7,000" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500">特色 & 備註</label>
+          <textarea v-model="formSchedule.note" rows="2" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none"></textarea>
+        </div>
+      </div>
+
+      <!-- 新增花費表單 -->
+      <div v-if="currentTab === 'expenses'" class="space-y-3">
+        <div>
+          <label class="text-xs font-bold text-slate-500">類別</label>
+          <select v-model="formExpense.category" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+            <option>交通</option>
+            <option>飲食</option>
+            <option>住宿</option>
+            <option>門票</option>
+            <option>購物</option>
+            <option>其他</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500">名稱</label>
+          <input type="text" v-model="formExpense.title" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500">金額 (韓元 KRW)</label>
+          <input type="number" v-model="formExpense.amount" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-500">付款方式</label>
+          <select v-model="formExpense.payment" class="w-full mt-1 bg-slate-50 border rounded-xl p-2.5 text-sm focus:outline-none">
+            <option>現金</option>
+            <option>信用卡</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 操作按鈕 -->
+      <div class="pt-3 flex gap-2">
+        <button v-if="isEditing" @click="confirmDelete" class="w-1/3 bg-red-50 text-red-600 font-bold py-3 rounded-xl text-sm">刪除</button>
+        <button @click="saveForm" class="flex-1 bg-busan-ocean text-white font-bold py-3 rounded-xl text-sm">儲存</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+  createApp({
+    setup() {
+      const currentTab = ref('schedule');
+      const tabs = [
+        { id: 'schedule', icon: 'map-pin' },
+        { id: 'info', icon: 'info' },
+        { id: 'shopping', icon: 'shopping-bag' },
+        { id: 'expenses', icon: 'dollar-sign' }
+      ];
+
+      // 天氣資訊預設
+      const currentWeather = ref({
+        icon: 'sun',
+        temp: 16,
+        feelsLike: 15,
+        condition: '晴朗舒適'
+      });
+
+      // 日期資料
+      const selectedDayIndex = ref(0);
+      const days = [
+        { week: 'Fri', date: '28', title: 'DAY 1 海雲台散步、膠囊列車' },
+        { week: 'Sat', date: '29', title: 'DAY 2 慶州古都之旅' },
+        { week: 'Sun', date: '30', title: 'DAY 3 廣安里海景行程' }
+      ];
+      const currentDay = computed(() => days[selectedDayIndex.value]);
+
+      // 行程分類與資料
+      const filterCategory = ref('全部');
+      const schedules = ref([
+        // DAY 1
+        { id: 1, day: 0, category: '航班', title: '去程航班 LJ578', flightNo: 'LJ578', depCode: 'TPE', depTime: '02:40', arrCode: 'PUS', arrTime: '06:10', naverUrl: 'https://map.naver.com' },
+        { id: 2, day: 0, category: '景點', title: '海雲台藍線公園 (膠囊列車)', time: '09:30 - 11:30', ticket: '₩35,000 (雙人)', note: '從尾浦搭到青沙浦，拍攝經典海景列車', travelTime: '25分鐘', transportIcon: 'bus', naverUrl: 'https://map.naver.com/v5/search/%ED%95%B4%EC%9A%B4%EB%8C%80%20%EB%B8%94%EB%A3%A8%EB%9D%BC%EC%9D%B8%ED%8C%8C%ED%81%AC' },
+        { id: 3, day: 0, category: '美食', title: '極東豬肉湯飯 (海雲台店)', time: '12:00 - 13:00', ticket: '-', note: '釜山必吃名店，湯頭濃郁美味', travelTime: '10分鐘', transportIcon: 'footprints', naverUrl: 'https://map.naver.com' },
+        // DAY 2
+        { id: 4, day: 1, category: '景點', title: '慶州瞻星台 & 皇理團路', time: '10:00 - 16:00', ticket: '免費', note: '體驗古都歷史風情，逛文青特色小店', travelTime: '60分鐘', transportIcon: 'car', naverUrl: 'https://map.naver.com' },
+        // DAY 3
+        { id: 5, day: 2, category: '景點', title: '廣安里海水浴場', time: '14:00 - 17:00', ticket: '免費', note: '欣賞廣安大橋海景與沿岸咖啡廳', travelTime: '30分鐘', transportIcon: 'bus', naverUrl: 'https://map.naver.com' }
+      ]);
+
+      const filteredSchedules = computed(() => {
+        return schedules.value.filter(s => s.day === selectedDayIndex.value && (filterCategory.value === '全部' || s.category === filterCategory.value));
+      });
+
+      // 匯率計算
+      const krwInput = ref(50000);
+
+      // 購物清單
+      const newShopItem = ref('');
+      const shoppingList = ref([
+        { name: 'Olive Young 護膚品', done: false },
+        { name: '釜山限定魚板禮盒', done: true }
+      ]);
+      const addShoppingItem = () => {
+        if (newShopItem.value.trim()) {
+          shoppingList.value.push({ name: newShopItem.value.trim(), done: false });
+          newShopItem.value = '';
+        }
+      };
+
+      // 花費紀錄
+      const expenses = ref([
+        { category: '飲食', title: '海雲台海鮮煎餅', date: '2024-11-28', amount: 25000, payment: '現金' },
+        { category: '交通', title: '膠囊列車車票', date: '2024-11-28', amount: 35000, payment: '信用卡' }
+      ]);
+      const totalExpenses = computed(() => expenses.value.reduce((sum, item) => sum + Number(item.amount), 0));
+
+      // Modal & 表單控制
+      const showModal = ref(false);
+      const isEditing = ref(false);
+      const editingId = ref(null);
+      const formSchedule = ref({ category: '景點', title: '', time: '', ticket: '', note: '' });
+      const formExpense = ref({ category: '飲食', title: '', amount: '', payment: '現金' });
+
+      const openAddModal = () => {
+        isEditing.value = false;
+        formSchedule.value = { category: '景點', title: '', time: '', ticket: '', note: '' };
+        formExpense.value = { category: '飲食', title: '', amount: '', payment: '現金' };
+        showModal.value = true;
+      };
+
+      const openEditModal = (item) => {
+        isEditing.value = true;
+        editingId.value = item.id;
+        formSchedule.value = { ...item };
+        showModal.value = true;
+      };
+
+      const saveForm = () => {
+        if (currentTab.value === 'schedule') {
+          if (isEditing.value) {
+            const idx = schedules.value.findIndex(s => s.id === editingId.value);
+            if (idx !== -1) schedules.value[idx] = { ...schedules.value[idx], ...formSchedule.value };
+          } else {
+            schedules.value.push({
+              id: Date.now(),
+              day: selectedDayIndex.value,
+              ...formSchedule.value,
+              naverUrl: 'https://map.naver.com'
+            });
+          }
+        } else if (currentTab.value === 'expenses') {
+          expenses.value.push({
+            ...formExpense.value,
+            date: new Date().toISOString().split('T')[0]
+          });
+        }
+        showModal.value = false;
+        nextTick(() => lucide.createIcons());
+      };
+
+      const confirmDelete = () => {
+        if (confirm('確定要刪除這個行程項目嗎？')) {
+          schedules.value = schedules.value.filter(s => s.id !== editingId.value);
+          showModal.value = false;
+        }
+      };
+
+      const getCategoryBadge = (cat) => {
+        const map = {
+          '景點': 'bg-emerald-100 text-emerald-700',
+          '美食': 'bg-orange-100 text-orange-700',
+          '住宿': 'bg-purple-100 text-purple-700',
+          '其他': 'bg-slate-100 text-slate-700'
+        };
+        return map[cat] || 'bg-slate-100 text-slate-700';
+      };
+
+      onMounted(() => {
+        lucide.createIcons();
+
+        // 初始化 Sortable 拖曳排序
+        const el = document.getElementById('schedule-list');
+        if (el) {
+          Sortable.create(el, {
+            handle: '.handle',
+            animation: 150,
+            onEnd: () => {
+              // 可在此獲取新的拖曳順序
+            }
+          });
+        }
+      });
+
+      return {
+        currentTab, tabs, currentWeather, selectedDayIndex, days, currentDay,
+        filterCategory, schedules, filteredSchedules, krwInput, newShopItem,
+        shoppingList, addShoppingItem, expenses, totalExpenses, showModal,
+        isEditing, formSchedule, formExpense, openAddModal, openEditModal,
+        saveForm, confirmDelete, getCategoryBadge
+      };
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>
